@@ -63,7 +63,7 @@ func (g *githubSource) GetCustomCosts(req *pb.CustomCostRequest) []*pb.CustomCos
 	}
 }
 
-
+// API SDK in Go Documentation - https://github.com/google/go-github/blob/master/github/billing.go#L20
 func (g *githubSource) scrapeGithubActions(organisation string) (*github.ActionBilling, *Response, error) {
 	actionsBilling, resp, err := g.usageApi.GetActionsBillingUser(g.ghCtx, organisation)
 	// Check for errors
@@ -76,6 +76,32 @@ func (g *githubSource) scrapeGithubActions(organisation string) (*github.ActionB
 	}
 	return &actionsBilling, nil
 }
+func (g *githubSource) scrapeGithubStorage(organisation string) (*github.StorageBilling, *Response, error) {
+	storageBilling, resp, err := g.usageApi.GetActionsBillingUser(g.ghCtx, organisation)
+	// Check for errors
+	if response.StatusCode != http.StatusOk {
+		return nil, fmt.Errorf("failed to retrieve actions price. Status code: %d", response.StatusCode)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch actions price: %v", err)
+	}
+	return &storageBilling, nil
+}
+
+func (g *githubSource) scrapeGithubPackages(organisation string) (*github.PackageBilling, *Response, error) {
+	packageBilling, resp, err := g.usageApi.GetActionsBillingUser(g.ghCtx, organisation)
+	// Check for errors
+	if response.StatusCode != http.StatusOk {
+		return nil, fmt.Errorf("failed to retrieve actions price. Status code: %d", response.StatusCode)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch actions price: %v", err)
+	}
+	return &packageBilling, nil
+}
+
 
 func getConfigFilePath() (string, error) {
 	// plugins expect exactly 2 args: the executable itself,
