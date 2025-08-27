@@ -1,7 +1,7 @@
-package github
+package githubplugin
 
 
-type githubConfig struct {
-	githubUserName string `json:"github_username"`
-	githubPAT string `json:"github_pat"`
+type GithubConfig struct {
+	GithubUserName string `json:"github_username"`
+	GithubPAT string `json:"github_pat"`
 }

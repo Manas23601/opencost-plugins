@@ -1,27 +1,28 @@
-package github
+package main
 
-import {
+import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"regexp"
-	"strconv"
-	"strings"
-	"time"
+	// "io"
+	// "net/http"
+	// "regexp"
+	// "strconv"
+	// "strings"
+	// "time"
 
 	"os"
 
 	"github.com/hashicorp/go-plugin"
-	githubplugin "github.com/google/go-github/v72/github"
+	"github.com/google/go-github/v74/github"
+	commonconfig "github.com/opencost/opencost-plugins/pkg/common/config"
+	githubplugin "github.com/opencost/opencost-plugins/pkg/plugins/github/githubplugin"
 	"golang.org/x/time/rate"
-	"github.com/opencost/opencost-plugins/github/githubplugin"
 	"github.com/opencost/opencost/core/pkg/log"
 	"github.com/opencost/opencost/core/pkg/model/pb"
 	"github.com/opencost/opencost/core/pkg/opencost"
 	ocplugin "github.com/opencost/opencost/core/pkg/plugin"
-}
+)
 
 const organisation = "opencost"
 
@@ -52,10 +53,15 @@ func (g *githubSource) GetCustomCosts(req *pb.CustomCostRequest) []*pb.CustomCos
 
 	// This only works for whole number dates
 	for _, target := range targets {
-		year := target.Start.Year()
-		month := target.Start.Month()
-		day := target.Start.Day()
-		hour := target.Start.Hour()
+		fmt.Println("Calling Billing Or", target)
+		windowPointer := target.Start()
+		year := int((*windowPointer).Year())
+
+		month := int((*windowPointer).Month())
+
+		day := int((*windowPointer).Day())
+
+		hour := int((*windowPointer).Hour())
 
 		// Check for resolution level, it can be hour, day, month, year
 		usageReportOptions := &github.UsageReportOptions{
@@ -65,8 +71,9 @@ func (g *githubSource) GetCustomCosts(req *pb.CustomCostRequest) []*pb.CustomCos
 			Hour: &hour,
 		}
 
-		actionsPricing, err := g.scrapeBillingOrg(organisation, usageReportOptions)
-		actionsPricing, err := g.scrapeBillingUser(user, usageReportOptions)
+		fmt.Println("Calling Billing Or")
+		actionsPricing, err := g.scrapeBillingOrg("cloudrainsdev", usageReportOptions)
+		// actionsPricing, _, err = g.scrapeBillingUser(user, usageReportOptions)
 
 		if err != nil {
 			log.Errorf("error getting dd pricing: %v", err)
@@ -76,36 +83,37 @@ func (g *githubSource) GetCustomCosts(req *pb.CustomCostRequest) []*pb.CustomCos
 			results = append(results, &errResp)
 			return results
 		} else {
-			log.Debugf("got list pricing: %v", actionsPricing.Details)
+			log.Debugf("got list pricing: %v", &actionsPricing.UsageItems[0].Quantity)
 		}
 	}
+	return results
 }
 
 
-func (g *githubSource) scrapeBillingOrg(organisation string, usageReportOptions *github.UsageReportOptions) (*github.UsageReport, *Response, error) {
-	orgBilling, resp, err := g.usageApi.GetUsageReportOrg(g.ghCtx, organisation, usageReportOptions)
+func (g *githubSource) scrapeBillingOrg(organisation string, usageReportOptions *github.UsageReportOptions) (*github.UsageReport, error) {
+	orgBilling, _, err := g.usageApi.GetUsageReportOrg(g.ghCtx, organisation, usageReportOptions)
 	// Check for errors
-	if response.StatusCode != http.StatusOk {
-		return nil, fmt.Errorf("failed to retrieve actions price. Status code: %d", response.StatusCode)
-	}
+	// if response.StatusCode != http.StatusOk {
+	// 	return nil, fmt.Errorf("failed to retrieve actions price. Status code: %d", response.StatusCode)
+	// }
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch actions price: %v", err)
 	}
-	return &storageBilling, nil
+	return orgBilling, nil
 }
 
-func (g *githubSource) scrapeBillingUser(user string, usageReportOptions *github.UsageReportOptions) (*github., *Response, error) {
-	userBilling, resp, err := g.usageApi.GetUsageReportUser(g.ghCtx, user, usageReportOptions)
+func (g *githubSource) scrapeBillingUser(user string, usageReportOptions *github.UsageReportOptions) (*github.UsageReport, error) {
+	userBilling, _, err := g.usageApi.GetUsageReportUser(g.ghCtx, user, usageReportOptions)
 	// Check for errors
-	if response.StatusCode != http.StatusOk {
-		return nil, fmt.Errorf("failed to retrieve actions price. Status code: %d", response.StatusCode)
-	}
+	// if response.StatusCode != http.StatusOk {
+	// 	return nil, fmt.Errorf("failed to retrieve actions price. Status code: %d", response.StatusCode)
+	// }
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch actions price: %v", err)
 	}
-	return &packageBilling, nil
+	return userBilling, nil
 }
 
 
@@ -125,8 +133,8 @@ func getConfigFilePath() (string, error) {
 	return os.Args[1], nil
 }
 
-func getGithubConfig(configFilePath string) (*githubplugin.githubConfig, error) {
-	var result githubplugin.githubConfig
+func getGithubConfig(configFilePath string) (*githubplugin.GithubConfig, error) {
+	var result githubplugin.GithubConfig
 	bytes, err := os.ReadFile(configFilePath)
 	if err != nil {
 		return nil, fmt.Errorf("error reading config file for DD config @ %s: %v", configFilePath, err)
@@ -143,15 +151,15 @@ func getGithubConfig(configFilePath string) (*githubplugin.githubConfig, error) 
 	return &result, nil
 }
 
-func getGithubClients(ghConfig *githubSource) (context.Context, *github.BillingService) {
+func getGithubClients(ghConfig githubplugin.GithubConfig) (context.Context, *github.BillingService) {
 	ghCtx := context.Background()
-	ghClient = github.NewClient(nil).WithAuthToken(ghConfig.githubPAT).Billing
+	ghClient := github.NewClient(nil).WithAuthToken(ghConfig.GithubPAT).Billing
 	return ghCtx, ghClient
 }
 
 func main() {
 	
-	configFile, err := getConfigFilePath()
+	configFile, err := commonconfig.GetConfigFilePath()
 	if err != nil {
 		log.Fatalf("error opening config file: %v", err)
 	}
@@ -163,14 +171,14 @@ func main() {
 	// set log level
 	rateLimiter := rate.NewLimiter(0.25, 5)
 	
-	ghCostSrc := githubSource {
+	ghCostSrc := githubSource{
 		rateLimiter: rateLimiter,
 	}
 
 	ghCostSrc.ghCtx, ghCostSrc.usageApi = getGithubClients(*ghConfig)
 
 	var pluginMap = map[string]plugin.Plugin{
-		"CustomCostSource": &ocplugin.CustomCostPlugin{Impl: &ddCostSrc},
+		"CustomCostSource": &ocplugin.CustomCostPlugin{Impl: &ghCostSrc},
 	}
 	
 	plugin.Serve(&plugin.ServeConfig{
